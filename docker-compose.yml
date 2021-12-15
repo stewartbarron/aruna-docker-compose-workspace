@@ -1,0 +1,109 @@
+version: "3"
+volumes:
+  prometheus_data: {}
+
+services:
+
+  naming-server:
+    image: aruna-naming-server
+    ports:
+      - "8761:8761"
+    networks:
+      - aruna-network
+
+  currency-exchange:
+    image: aruna-currency-exchange
+    environment:
+      - JAVA_OPTS=
+        -DEUREKA_SERVER=http://aruna-naming-server:8761/eureka
+        -DZIPKIN_SERVER=http://zipkin:9411/
+    ports:
+      - "8000:8000"
+    #   links:
+    #     - zipkin
+    depends_on:
+      - naming-server
+    #     - zipkin
+    networks:
+      - aruna-network
+
+  currency-conversion:
+    image: aruna-currency-conversion
+    environment:
+      - JAVA_OPTS=
+        -DEUREKA_SERVER=http://aruna-naming-server:8761/eureka
+        -DZIPKIN_SERVER=http://zipkin:9411/
+    ports:
+      - "8100:8100"
+    #    links:
+    #      - zipkin
+    depends_on:
+      - currency-exchange
+    #      - zipkin
+    networks:
+      - aruna-network
+
+  api-gateway:
+    image: aruna-api-gateway
+    environment:
+      - JAVA_OPTS=
+        -DEUREKA_SERVER=http://aruna-naming-server:8761/eureka
+        -DZIPKIN_SERVER=http://zipkin:9411/
+    #       -DENQUIRY_SERVICE=http://techefx-product-enquiry-service:9700/
+    ports:
+      - "8765:8765"
+    #   links:
+    #     - zipkin
+    depends_on:
+      - naming-server
+      - currency-exchange
+      - currency-conversion
+    #      - zipkin
+    networks:
+      - aruna-network
+
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./config/:/etc/prometheus
+      - ./data/prometheus:/data
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention=31d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api-gateway
+    networks:
+      - aruna-network
+
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - aruna-network
+
+
+  zipkin:
+    image: openzipkin/zipkin
+    environment:
+      - STORAGE_TYPE=mem
+    ports:
+      - "9411:9411"
+    depends_on:
+      - naming-server
+    networks:
+      - aruna-network
+
+
+
+networks:
+  aruna-network:
